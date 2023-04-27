@@ -1,0 +1,241 @@
+/*
+ * Gbrain, Kevin Meng, 2022-08-03
+ * kevin.meng@gbrainlife.com
+ * 
+ * WARNING: Uploading this file onto the board will erase any file previously uploaded!
+ * 
+ * File name: Test_BT.ino
+ * Description: Control LOLIN D32 Pro board using Android device via Bluetooth
+ * 
+ * Usage steps:
+ * 1. In Computer/Arduino IDE, upload this file (Test_BT.ino) onto the LOLIN D32 Pro board
+ * 2. In Computer/Arduino IDE, open Serial Monitor window (Tools > Serial Monitor)
+ * 3. In Android/Play Store, install "Serial Bluetooth Terminal" app
+ * 4. In Android/Serial Bluetooth Terminal, pair the LOLIN D32 Pro board via Bluetooth
+ * 5. In Android/Serial Bluetooth Terminal, send messages - these will be printed on Serial Monitor
+ * 
+ * List of commands:
+ * - "led": Turn on/off physical LED on LOLIN D32 Pro board
+ * - "plot": Turn on/off data stream from Arduino to Android
+ * - "0": Set stream type to random int from uniform distribution
+ * - "1": Set stream type to random double from normal distribution
+ * - "2": Set stream type to actual measurement (int) from sensor
+ * 
+ */
+#include "BluetoothSerial.h"
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include <random>
+using namespace std;
+#include <adc.h>
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+#if !defined(CONFIG_BT_SPP_ENABLED)
+#error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
+#endif
+
+// --------------------------------------------
+// Global variables
+BluetoothSerial SerialBT;
+String message = ""; // message received from Android device
+
+const String KEYWORD_LED = "led"; // check message to change led bool value
+bool led_on = true; // bool value to turn LED on/off upon corresponding keyword
+
+const String KEYWORD_PLOT = "plot"; // check message to change plot bool value
+bool plot_on = false; // bool value to send values to Android device
+
+int streamType = 0; // 0 = int, 1 = double, 2 = sensor
+
+int intValue; // random value from uniform distribution (min, max-1)
+const int INT_VALUE_MIN = 0;
+const int INT_VALUE_MAX = 100;
+
+default_random_engine generator; // from namespace std
+normal_distribution<double> distribution(0.0, 1.0); // from namespace std
+double doubleValue; // random value from normal distribution (mean=0, std=1)
+const unsigned int PRECISION = 100; // 2 decimals -> 10**2 = 100
+
+int sensorValue; // actual measurement from sensor
+
+// --------------------------------------------
+// Helper functions
+void configBluetooth() {
+  Serial.begin(115200);
+  SerialBT.begin("ESP32test"); //Bluetooth device name
+  if (!btStart()) {
+    Serial.println("Failed to initialize controller");
+  }
+ 
+  if (esp_bluedroid_init() != ESP_OK) {
+    Serial.println("Failed to initialize bluedroid");
+  }
+ 
+  if (esp_bluedroid_enable() != ESP_OK) {
+    Serial.println("Failed to enable bluedroid");
+  }
+  Serial.println("The device started, now you can pair it with bluetooth!");
+}
+
+void configSensor() {
+  pinMode(BUILTIN_LED, OUTPUT); // initialize LED pin as output
+  adc1_config_channel_atten(ADC1_CHANNEL_4, ADC_ATTEN_DB_11);
+  adc1_config_width(ADC_WIDTH_BIT_12);
+}
+
+void printBluetoothAddress() {
+ 
+  const uint8_t* point = esp_bt_dev_get_address();
+ 
+  for (int i = 0; i < 6; i++) {
+ 
+    char str[3];
+ 
+    sprintf(str, "%02X", (int)point[i]);
+    Serial.print(str);
+ 
+    if (i < 5){
+      Serial.print(":");
+    }
+ 
+  }
+}
+
+void printDoubleValue(double value, unsigned int precision) {
+  if (plot_on) {
+    Serial.print(int(value)); // show value on Serial Plotter
+    Serial.print("."); // show value on Serial Plotter
+    unsigned int frac;
+    if(value >= 0) {
+      frac = int((value - int(value)) * precision);
+    } else {
+      frac = int((int(value) - value) * precision);
+    }
+    Serial.println(frac); // show value on Serial Plotter
+  }
+}
+
+void printIntValue(int value){
+  if (plot_on) {
+    Serial.println(value); // show value on Serial Plotter
+  }
+}
+
+void readDataStream() {
+  // random int value from uniform distribution
+  if (streamType == 0) {
+    intValue = random(INT_VALUE_MIN, INT_VALUE_MAX);
+    printIntValue(intValue); // show value on Serial Plotter
+    // writeStrValue(String(intValue));
+    writeIntValue(intValue); // show value on Android device
+  } 
+  // random double value from normal distribution
+  else if (streamType == 1) {
+    doubleValue = distribution(generator);
+    printDoubleValue(doubleValue, PRECISION);
+    // writeStrValue(String(int(doubleValue*PRECISION)));
+    // writeStrValue(String(doubleValue));
+  }
+  // actual measurement from sensor
+  else if (streamType == 2) {
+    sensorValue = adc1_get_raw(ADC1_CHANNEL_4);
+    printIntValue(sensorValue);
+    // writeStrValue(String(sensorValue));
+    writeIntValue(sensorValue);
+  }
+}
+
+void readMessageFromAndroid() {
+  // Process one character per iteration
+  if (SerialBT.available()) {
+    char newChar = SerialBT.read();
+    if (newChar != '\n') {
+      message += String(newChar);
+    } else {
+      message = "";
+    }
+    Serial.write(newChar);
+  }
+}
+
+void sendMessageToAndroid() {
+  if (Serial.available()) {
+    SerialBT.write(Serial.read());
+  }
+}
+
+void setStreamType(String message) {
+  if (message == "0" || message == "1" || message == "2") {
+    streamType = message.toInt();
+  }
+}
+
+void switchLed(String message) {
+  if (message == KEYWORD_LED) {
+    led_on = !led_on;
+    if (led_on) {
+      digitalWrite(BUILTIN_LED, LOW); // LED ON
+    } else {
+      digitalWrite(BUILTIN_LED, HIGH); // LED OFF
+    }
+  }
+}
+
+void switchPlot(String message) {
+  if (message == KEYWORD_PLOT) {
+    plot_on = !plot_on;
+  }
+}
+
+void writeIntValue(int a){
+  if (plot_on) {
+    char buf[6]; // length set --> easy to decode
+    sprintf(buf, "%05d\n", a);
+    int i = 0;
+    while (i < 6){
+      SerialBT.write((char)buf[i]);
+      i++;
+    }
+  }
+}
+
+void writeStrValue(String a) {
+  if (plot_on) {
+    uint8_t buf[a.length()]; // length unknown --> difficult to decode
+    memcpy(buf, a.c_str(), a.length());
+    SerialBT.write(buf, a.length()); // send to Android device
+    SerialBT.println(); // send to Android device
+  }
+}
+
+// --------------------------------------------
+// Arduino functions
+void setup() {
+  configSensor();
+  configBluetooth();
+  printBluetoothAddress();
+}
+
+void loop() {
+  // --------------------
+  // 1. ESP32 -> Arduino: Read sensor values from LOLIN D32 Pro board
+  readDataStream();
+  // --------------------
+  // 2. Arduino -> Android: Write messages to Android device via Bluetooth
+  sendMessageToAndroid();
+  // --------------------
+  // 3. Android -> Arduino: Read messages received from Android device via Bluetooth
+  readMessageFromAndroid();
+  // --------------------
+  // 4. Arduino -> ESP32: Check received message and send commands to LOLIN D32 Pro board
+  setStreamType(message);
+  switchLed(message);
+  switchPlot(message);
+  // --------------------
+  // 5. Leave some time before next iteration in the loop
+  delay(20);
+  // --------------------
+}
