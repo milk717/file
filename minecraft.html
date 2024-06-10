@@ -12,6 +12,7 @@
       .glassmorphism {
         backdrop-filter: blur(10px);
         background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
         box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
       }
     </style>
@@ -83,11 +84,38 @@
         </div>
       </div>
 
-      <div
-        class="result text-lg font-medium text-white mt-6 text-center"
-        id="result"
-      >
-        The angle between the two points is 0.0°
+      <div class="flex items-center justify-between">
+        <div
+          class="result text-lg font-medium text-white text-center"
+          id="result"
+        >
+          🎯 ???
+        </div>
+
+        <button
+          onclick="swapCoordinates()"
+          class="bg-indigo-500 text-white px-4 py-2 rounded-full hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
+        >
+          🔃 Swap
+        </button>
+      </div>
+
+      <div class="mt-8">
+        <p class="text-xl font-semibold mb-4 text-white">Saved Positions</p>
+        <div id="saved-positions" class="space-y-2">
+          <div
+            class="bg-white bg-opacity-75 p-2 rounded-md shadow-sm cursor-pointer hover:bg-opacity-100"
+            onclick="setTargetPosition(5000, -600)"
+          >
+            House: (5000, -600)
+          </div>
+          <div
+            class="bg-white bg-opacity-75 p-2 rounded-md shadow-sm cursor-pointer hover:bg-opacity-100"
+            onclick="setTargetPosition(630, -80)"
+          >
+            Nether Portal: (630, -80)
+          </div>
+        </div>
       </div>
     </div>
 
@@ -106,9 +134,27 @@
 
         document.getElementById(
           'result'
-        ).innerText = `The angle between the two points is ${angleDegrees.toFixed(
-          1
-        )}°`;
+        ).innerText = `🎯 ${angleDegrees.toFixed(2)}°`;
+      }
+
+      function setTargetPosition(x, z) {
+        document.getElementById('x2').value = x;
+        document.getElementById('z2').value = z;
+        calculateAngle();
+      }
+
+      function swapCoordinates() {
+        const x1 = document.getElementById('x1').value;
+        const z1 = document.getElementById('z1').value;
+        const x2 = document.getElementById('x2').value;
+        const z2 = document.getElementById('z2').value;
+
+        document.getElementById('x1').value = x2;
+        document.getElementById('z1').value = z2;
+        document.getElementById('x2').value = x1;
+        document.getElementById('z2').value = z1;
+
+        calculateAngle();
       }
     </script>
   </body>
